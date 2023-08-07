@@ -62,6 +62,9 @@ public:
   explicit VescDriver(const rclcpp::NodeOptions & options);
 
 private:
+  // ROS parameters
+  std::string imu_frame_;
+
   // interface to the VESC
   VescInterface vesc_;
   void vescPacketCallback(const std::shared_ptr<VescPacket const> & packet);
