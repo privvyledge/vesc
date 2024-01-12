@@ -28,6 +28,8 @@
 
 // -*- mode:c++; fill-column: 100; -*-
 
+// todo: accept time rate as a parameter. Current default is 50. Find the max allowed.
+
 #include "vesc_driver/vesc_driver.hpp"
 
 #include <vesc_msgs/msg/vesc_state.hpp>
