@@ -28,6 +28,8 @@
 
 // -*- mode:c++; fill-column: 100; -*-
 
+//
+
 #include "vesc_ackermann/vesc_to_odom.hpp"
 
 #include <cmath>
@@ -98,8 +100,8 @@ void VescToOdom::vescStateCallback(const VescStateStamped::SharedPtr state)
     return;
   }
 
-  // convert to engineering units
-  double current_speed = (-state->state.speed - speed_to_erpm_offset_) / speed_to_erpm_gain_;
+  // convert to engineering units. todo: multiply speed by -1 if inverted and 1 if not. Default should be 1
+  double current_speed = (state->state.speed - speed_to_erpm_offset_) / speed_to_erpm_gain_;
   if (std::fabs(current_speed) < 0.05) {
     current_speed = 0.0;
   }
