@@ -28,6 +28,8 @@
 
 // -*- mode:c++; fill-column: 100; -*-
 
+// todo: accept time rate as a parameter. Current default is 50. Find the max allowed.
+
 #include "vesc_driver/vesc_driver.hpp"
 
 #include <vesc_msgs/msg/vesc_state.hpp>
@@ -61,12 +63,16 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   speed_limit_(this, "speed"),
   position_limit_(this, "position"),
   servo_limit_(this, "servo", 0.0, 1.0),
+  imu_frame_("imu_link"),
   driver_mode_(MODE_INITIALIZING),
   fw_version_major_(-1),
   fw_version_minor_(-1)
 {
   // get vesc serial port address
   std::string port = declare_parameter<std::string>("port", "");
+
+  // get IMU frame ID
+  imu_frame_ = declare_parameter("imu_frame", imu_frame_);
 
   // attempt to connect to the serial port
   try {
@@ -207,6 +213,9 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
 
     auto imu_msg = VescImuStamped();
     auto std_imu_msg = Imu();
+    imu_msg.header.frame_id = imu_frame_;
+    std_imu_msg.header.frame_id = imu_frame_;
+
     imu_msg.header.stamp = now();
     std_imu_msg.header.stamp = now();
 
