@@ -66,7 +66,8 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   imu_frame_("imu_link"),
   driver_mode_(MODE_INITIALIZING),
   fw_version_major_(-1),
-  fw_version_minor_(-1)
+  fw_version_minor_(-1),
+  poll_rate_(50.0)
 {
   // get vesc serial port address
   std::string port = declare_parameter<std::string>("port", "");
@@ -109,8 +110,14 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   servo_sub_ = create_subscription<Float64>(
     "commands/servo/position", rclcpp::QoS{10}, std::bind(&VescDriver::servoCallback, this, _1));
 
-  // create a 50Hz timer, used for state machine & polling VESC telemetry
-  timer_ = create_wall_timer(20ms, std::bind(&VescDriver::timerCallback, this));
+  // get vesc polling rate for publishers and subscribers
+  poll_rate_ = declare_parameter("poll_rate", poll_rate_);
+
+  // create a timer (default=50Hz), used for state machine & polling VESC telemetry
+  timer_ = create_wall_timer(
+    std::chrono::seconds(1.0 / poll_rate_),
+    std::bind(&VescDriver::timerCallback, this)
+    );
 }
 
 /* TODO or TO-THINKABOUT LIST
