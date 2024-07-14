@@ -111,11 +111,11 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
     "commands/servo/position", rclcpp::QoS{10}, std::bind(&VescDriver::servoCallback, this, _1));
 
   // get vesc polling rate for publishers and subscribers
-  poll_rate_ = declare_parameter("poll_rate", poll_rate_);
+  poll_rate_ = declare_parameter<double>("poll_rate", poll_rate_);
 
-  // create a timer (default=50Hz), used for state machine & polling VESC telemetry
+  // create a timer (default=50.0Hz), used for state machine & polling VESC telemetry
   timer_ = create_wall_timer(
-    std::chrono::seconds(1.0 / poll_rate_),
+    std::chrono::duration<double>(1.0 / poll_rate_),  // in seconds
     std::bind(&VescDriver::timerCallback, this)
     );
 }

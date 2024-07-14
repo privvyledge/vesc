@@ -122,7 +122,7 @@ private:
   int fw_version_minor_;                ///< firmware minor version reported by vesc
 
   // miscellaneous variables and parameters
-  float poll_rate_;
+  double poll_rate_;
 
   // ROS callbacks
   void brakeCallback(const Float64::SharedPtr brake);
