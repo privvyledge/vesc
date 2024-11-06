@@ -260,6 +260,17 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     std_imu_msg.orientation.y = imuData->q_y();
     std_imu_msg.orientation.z = imuData->q_z();
 
+    // covariances. Todo: set as a parameter or estimate
+    std_imu_msg.orientation_covariance[0] = 0.001;
+    std_imu_msg.orientation_covariance[4] = 0.001;
+    std_imu_msg.orientation_covariance[8] = 0.001;
+    std_imu_msg.angular_velocity_covariance[0] = 0.005;
+    std_imu_msg.angular_velocity_covariance[4] = 0.005;
+    std_imu_msg.angular_velocity_covariance[8] = 0.005;
+    std_imu_msg.linear_acceleration_covariance[0] = 0.005;
+    std_imu_msg.linear_acceleration_covariance[4] = 0.005;
+    std_imu_msg.linear_acceleration_covariance[8] = 0.005;
+
 
     imu_pub_->publish(imu_msg);
     imu_std_pub_->publish(std_imu_msg);
