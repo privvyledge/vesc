@@ -151,7 +151,7 @@ void VescToOdom::vescStateCallback(const VescStateStamped::SharedPtr state)
   // Position uncertainty
   /** @todo Think about position uncertainty, perhaps get from parameters? */
   odom.pose.covariance[0] = 0.2;   ///< x
-  odom.pose.covariance[7] = 0.2;   ///< y
+  odom.pose.covariance[7] = 0.45;   ///< y
   odom.pose.covariance[14] = 999999999.0;  ///< z
   odom.pose.covariance[21] = 999999999.0;  ///< roll
   odom.pose.covariance[28] = 999999999.0;  ///< pitch
@@ -165,8 +165,8 @@ void VescToOdom::vescStateCallback(const VescStateStamped::SharedPtr state)
 
   // Velocity uncertainty
   /** @todo Think about velocity uncertainty */
-  odom.twist.covariance[0] = 0.01;   ///< vx
-  odom.twist.covariance[7] = 0.2;   ///< vy
+  odom.twist.covariance[0] = 0.02;   ///< vx
+  odom.twist.covariance[7] = 0.06;   ///< vy
   odom.twist.covariance[14] = 999999999.0;  ///< vz
   odom.twist.covariance[21] = 999999999.0;  ///< vroll
   odom.twist.covariance[28] = 999999999.0;  ///< vpitch
