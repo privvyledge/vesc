@@ -170,7 +170,7 @@ void VescToOdom::vescStateCallback(const VescStateStamped::SharedPtr state)
   odom.twist.covariance[14] = 999999999.0;  ///< vz
   odom.twist.covariance[21] = 999999999.0;  ///< vroll
   odom.twist.covariance[28] = 999999999.0;  ///< vpitch
-  odom.twist.covariance[35] = 0.04;  ///< vyaw
+  odom.twist.covariance[35] = 0.4;  ///< vyaw
 
   if (publish_tf_) {
     TransformStamped tf;
