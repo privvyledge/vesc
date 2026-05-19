@@ -10,5 +10,13 @@
     <param name="speed_to_erpm_offset" value="0.0" />
     <param name="steering_angle_to_servo_gain" value="-1.2135" />
     <param name="steering_angle_to_servo_offset" value="0.5304" />
+    <param name="use_closed_loop_speed" value="false" />
+    <param name="speed_kp" value="0.0" />
+    <param name="speed_ki" value="0.0" />
+    <param name="speed_anti_windup" value="1000.0" />
+    <param name="use_adaptive_ff" value="false" />
+    <param name="adaptive_ff_alpha" value="0.95" />
+    <param name="adaptive_ff_gain_min" value="2307.0" />
+    <param name="adaptive_ff_gain_max" value="9228.0" />
   </node>
 </launch>

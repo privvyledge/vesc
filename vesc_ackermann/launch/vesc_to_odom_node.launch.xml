@@ -15,5 +15,10 @@
     <param name="steering_angle_to_servo_offset" value="0.0" />
     <param name="wheelbase" value="0.2" />
     <param name="publish_tf" value="true" />
+    <param name="publish_actuator_feedback" value="false" />
+    <param name="use_imu_yaw_rate" value="false" />
+    <param name="imu_yaw_invert" value="false" />
+    <param name="odom_pose_covariance_diagonal" value="[0.05, 0.05, 1000000000.0, 1000000000.0, 1000000000.0, 0.1]" />
+    <param name="odom_twist_covariance_diagonal" value="[0.01, 0.1, 1000000000.0, 1000000000.0, 1000000000.0, 0.05]" />
   </node>
 </launch>

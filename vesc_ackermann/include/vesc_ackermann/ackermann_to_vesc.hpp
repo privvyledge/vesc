@@ -32,14 +32,18 @@
 #define VESC_ACKERMANN__ACKERMANN_TO_VESC_HPP_
 
 #include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <vesc_msgs/msg/vesc_state_stamped.hpp>
 
 namespace vesc_ackermann
 {
 
 using ackermann_msgs::msg::AckermannDriveStamped;
+using nav_msgs::msg::Odometry;
 using std_msgs::msg::Float64;
+using vesc_msgs::msg::VescStateStamped;
 
 class AckermannToVesc : public rclcpp::Node
 {
@@ -52,15 +56,38 @@ private:
   double speed_to_erpm_gain_, speed_to_erpm_offset_;
   double steering_to_servo_gain_, steering_to_servo_offset_;
 
-  /** @todo consider also providing an interpolated look-up table conversion */
+  // last commanded higher-order derivatives (4C)
+  double cmd_accel_;
+  double cmd_steering_rate_;
+  double cmd_jerk_;
+
+  // closed-loop speed PI control (4E)
+  bool use_closed_loop_;
+  double actual_erpm_;
+  double integral_;
+  double ff_gain_;
+  double kp_;
+  double ki_;
+  double anti_windup_;
+  rclcpp::Time prev_cmd_time_;
+
+  // adaptive feedforward (4E)
+  bool use_adaptive_ff_;
+  double adaptive_ff_alpha_;
+  double ff_gain_min_;
+  double ff_gain_max_;
 
   // ROS services
   rclcpp::Publisher<Float64>::SharedPtr erpm_pub_;
   rclcpp::Publisher<Float64>::SharedPtr servo_pub_;
   rclcpp::Subscription<AckermannDriveStamped>::SharedPtr ackermann_sub_;
+  rclcpp::Subscription<VescStateStamped>::SharedPtr state_sub_;
+  rclcpp::Subscription<Odometry>::SharedPtr filtered_odom_sub_;
 
   // ROS callbacks
   void ackermannCmdCallback(const AckermannDriveStamped::SharedPtr cmd);
+  void vescStateCallback(const VescStateStamped::SharedPtr state);
+  void filteredOdomCallback(const Odometry::SharedPtr odom);
 };
 
 }  // namespace vesc_ackermann

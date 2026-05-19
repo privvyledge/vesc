@@ -13,3 +13,7 @@
     servo_min: 0.15
     speed_max: 23250.0
     speed_min: -23250.0
+    imu_poll_rate: 100.0
+    imu_orientation_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.005]
+    imu_angular_velocity_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]
+    imu_linear_accel_covariance: [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]

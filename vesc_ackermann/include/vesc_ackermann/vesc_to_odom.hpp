@@ -33,18 +33,23 @@
 
 #include <tf2_ros/transform_broadcaster.h>
 
+#include <array>
 #include <memory>
 #include <string>
 
+#include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <vesc_msgs/msg/vesc_state_stamped.hpp>
 
 namespace vesc_ackermann
 {
 
+using ackermann_msgs::msg::AckermannDriveStamped;
 using nav_msgs::msg::Odometry;
+using sensor_msgs::msg::Imu;
 using std_msgs::msg::Float64;
 using vesc_msgs::msg::VescStateStamped;
 
@@ -64,21 +69,43 @@ private:
   double steering_to_servo_gain_, steering_to_servo_offset_;
   double wheelbase_;
   bool publish_tf_;
+  bool publish_actuator_feedback_;
 
   // odometry state
   double x_, y_, yaw_;
   Float64::SharedPtr last_servo_cmd_;  ///< Last servo position commanded value
   VescStateStamped::SharedPtr last_state_;  ///< Last received state message
 
+  // odometry covariance diagonal (6 DOF: x,y,z,roll,pitch,yaw)
+  std::array<double, 6> odom_pose_cov_diag_;
+  std::array<double, 6> odom_twist_cov_diag_;
+
+  // IMU yaw-rate fusion
+  bool use_imu_yaw_rate_;
+  double imu_yaw_rate_;
+  bool imu_yaw_invert_;
+  rclcpp::Time last_imu_stamp_;
+  bool imu_stamp_initialized_;
+
+  // actuator feedback finite-difference state
+  double prev_feedback_speed_;
+  double prev_feedback_steering_;
+  double prev_feedback_accel_;
+  rclcpp::Time prev_feedback_stamp_;
+  bool feedback_initialized_;
+
   // ROS services
   rclcpp::Publisher<Odometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<AckermannDriveStamped>::SharedPtr feedback_pub_;
   rclcpp::Subscription<VescStateStamped>::SharedPtr vesc_state_sub_;
   rclcpp::Subscription<Float64>::SharedPtr servo_sub_;
+  rclcpp::Subscription<Imu>::SharedPtr imu_sub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_pub_;
 
   // ROS callbacks
   void vescStateCallback(const VescStateStamped::SharedPtr state);
   void servoCmdCallback(const Float64::SharedPtr servo);
+  void imuCallback(const Imu::SharedPtr imu);
 };
 
 }  // namespace vesc_ackermann

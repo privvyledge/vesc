@@ -32,6 +32,7 @@
 #define VESC_DRIVER__VESC_DRIVER_HPP_
 
 #include <experimental/optional>
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -107,6 +108,7 @@ private:
   rclcpp::SubscriptionBase::SharedPtr position_sub_;
   rclcpp::SubscriptionBase::SharedPtr servo_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::TimerBase::SharedPtr timer_imu_;
 
   // driver modes (possible states)
   typedef enum
@@ -117,9 +119,14 @@ private:
   driver_mode_t;
 
   // other variables
-  driver_mode_t driver_mode_;           ///< driver state machine mode (state)
-  int fw_version_major_;                ///< firmware major version reported by vesc
-  int fw_version_minor_;                ///< firmware minor version reported by vesc
+  driver_mode_t driver_mode_;                ///< driver state machine mode (state)
+  std::atomic<int> fw_version_major_;        ///< firmware major version reported by vesc
+  std::atomic<int> fw_version_minor_;        ///< firmware minor version reported by vesc
+
+  // IMU covariance matrices (row-major, 3x3)
+  std::array<double, 9> imu_orientation_cov_;
+  std::array<double, 9> imu_angular_velocity_cov_;
+  std::array<double, 9> imu_linear_accel_cov_;
 
   // miscellaneous variables and parameters
   double poll_rate_;
@@ -132,6 +139,7 @@ private:
   void servoCallback(const Float64::SharedPtr servo);
   void speedCallback(const Float64::SharedPtr speed);
   void timerCallback();
+  void timer_imu_Callback();
 };
 
 }  // namespace vesc_driver

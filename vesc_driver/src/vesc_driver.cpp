@@ -28,8 +28,6 @@
 
 // -*- mode:c++; fill-column: 100; -*-
 
-// todo: accept time rate as a parameter. Current default is 50. Find the max allowed.
-
 #include "vesc_driver/vesc_driver.hpp"
 
 #include <vesc_msgs/msg/vesc_state.hpp>
@@ -38,6 +36,7 @@
 #include <cassert>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -75,7 +74,71 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   // get IMU frame ID
   imu_frame_ = declare_parameter("imu_frame", imu_frame_);
 
-  // attempt to connect to the serial port
+  rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
+  qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
+  qos_profile.durability(rclcpp::DurabilityPolicy::Volatile);
+  qos_profile.liveliness(rclcpp::LivelinessPolicy::Automatic);
+
+  rclcpp::QoS sensor_qos(rclcpp::KeepLast(1));
+  sensor_qos.best_effort().durability_volatile();
+
+  // create vesc state (telemetry) publisher
+  state_pub_ = create_publisher<VescStateStamped>("sensors/core", sensor_qos);
+  imu_pub_ = create_publisher<VescImuStamped>("sensors/imu", sensor_qos);
+  imu_std_pub_ = create_publisher<Imu>("sensors/imu/raw", sensor_qos);
+
+  // since vesc state does not include the servo position, publish the commanded
+  // servo position as a "sensor"
+  servo_sensor_pub_ = create_publisher<Float64>(
+    "sensors/servo_position_command", sensor_qos);
+
+  // subscribe to motor and servo command topics
+  duty_cycle_sub_ = create_subscription<Float64>(
+    "commands/motor/duty_cycle", qos_profile, std::bind(
+      &VescDriver::dutyCycleCallback, this,
+      _1));
+  current_sub_ = create_subscription<Float64>(
+    "commands/motor/current", qos_profile, std::bind(&VescDriver::currentCallback, this, _1));
+  brake_sub_ = create_subscription<Float64>(
+    "commands/motor/brake", qos_profile, std::bind(&VescDriver::brakeCallback, this, _1));
+  speed_sub_ = create_subscription<Float64>(
+    "commands/motor/speed", qos_profile, std::bind(&VescDriver::speedCallback, this, _1));
+  position_sub_ = create_subscription<Float64>(
+    "commands/motor/position", qos_profile, std::bind(&VescDriver::positionCallback, this, _1));
+  servo_sub_ = create_subscription<Float64>(
+    "commands/servo/position", qos_profile, std::bind(&VescDriver::servoCallback, this, _1));
+
+  // get vesc polling rate for publishers and subscribers
+  poll_rate_ = declare_parameter<double>("poll_rate", poll_rate_);
+
+  // create a timer (default=50.0Hz), used for state machine & polling VESC telemetry
+  timer_ = create_wall_timer(
+    std::chrono::duration<double>(1.0 / poll_rate_),
+    std::bind(&VescDriver::timerCallback, this));
+
+  double imu_poll_rate = declare_parameter<double>("imu_poll_rate", 100.0);
+  timer_imu_ = create_wall_timer(
+    std::chrono::duration<double>(1.0 / imu_poll_rate),
+    std::bind(&VescDriver::timer_imu_Callback, this));
+
+  // configurable IMU covariance matrices
+  auto ori_cov = declare_parameter<std::vector<double>>(
+    "imu_orientation_covariance",
+    {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.005});
+  auto gyro_cov = declare_parameter<std::vector<double>>(
+    "imu_angular_velocity_covariance",
+    {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
+  auto accel_cov = declare_parameter<std::vector<double>>(
+    "imu_linear_accel_covariance",
+    {0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01});
+  for (size_t i = 0; i < 9; ++i) {
+    imu_orientation_cov_[i] = ori_cov[i];
+    imu_angular_velocity_cov_[i] = gyro_cov[i];
+    imu_linear_accel_cov_[i] = accel_cov[i];
+  }
+
+  // Connect after all publishers and timers are ready — the background read thread
+  // fires vescPacketCallback immediately on first data, so publishers must exist first.
   try {
     vesc_.connect(port);
   } catch (SerialException e) {
@@ -83,47 +146,12 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
     rclcpp::shutdown();
     return;
   }
-
-  // create vesc state (telemetry) publisher
-  state_pub_ = create_publisher<VescStateStamped>("sensors/core", rclcpp::QoS{10});
-  imu_pub_ = create_publisher<VescImuStamped>("sensors/imu", rclcpp::QoS{10});
-  imu_std_pub_ = create_publisher<Imu>("sensors/imu/raw", rclcpp::QoS{10});
-
-  // since vesc state does not include the servo position, publish the commanded
-  // servo position as a "sensor"
-  servo_sensor_pub_ = create_publisher<Float64>(
-    "sensors/servo_position_command", rclcpp::QoS{10});
-
-  // subscribe to motor and servo command topics
-  duty_cycle_sub_ = create_subscription<Float64>(
-    "commands/motor/duty_cycle", rclcpp::QoS{10}, std::bind(
-      &VescDriver::dutyCycleCallback, this,
-      _1));
-  current_sub_ = create_subscription<Float64>(
-    "commands/motor/current", rclcpp::QoS{10}, std::bind(&VescDriver::currentCallback, this, _1));
-  brake_sub_ = create_subscription<Float64>(
-    "commands/motor/brake", rclcpp::QoS{10}, std::bind(&VescDriver::brakeCallback, this, _1));
-  speed_sub_ = create_subscription<Float64>(
-    "commands/motor/speed", rclcpp::QoS{10}, std::bind(&VescDriver::speedCallback, this, _1));
-  position_sub_ = create_subscription<Float64>(
-    "commands/motor/position", rclcpp::QoS{10}, std::bind(&VescDriver::positionCallback, this, _1));
-  servo_sub_ = create_subscription<Float64>(
-    "commands/servo/position", rclcpp::QoS{10}, std::bind(&VescDriver::servoCallback, this, _1));
-
-  // get vesc polling rate for publishers and subscribers
-  poll_rate_ = declare_parameter<double>("poll_rate", poll_rate_);
-
-  // create a timer (default=50.0Hz), used for state machine & polling VESC telemetry
-  timer_ = create_wall_timer(
-    std::chrono::duration<double>(1.0 / poll_rate_),  // in seconds
-    std::bind(&VescDriver::timerCallback, this)
-    );
 }
 
 /* TODO or TO-THINKABOUT LIST
   - what should we do on startup? send brake or zero command?
   - what to do if the vesc interface gives an error?
-  - check version number against know compatable?
+  - check version number against know compatible?
   - should we wait until we receive telemetry before sending commands?
   - should we track the last motor command
   - what to do if no motor command received recently?
@@ -132,6 +160,20 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   - what to do if a command parameter is out of range, ignore?
   - try to predict vesc bounds (from vesc config) and command detect bounds errors
 */
+
+void VescDriver::timer_imu_Callback()
+{
+  // VESC interface should not unexpectedly disconnect, but test for it anyway
+  if (!vesc_.isConnected()) {
+    RCLCPP_FATAL(get_logger(), "Unexpectedly disconnected from serial port.");
+    rclcpp::shutdown();
+    return;
+  }
+  if (driver_mode_ == MODE_OPERATING) {
+    vesc_.requestImuData();
+  }
+  // no-op during MODE_INITIALIZING — timerCallback owns the state machine
+}
 
 void VescDriver::timerCallback()
 {
@@ -150,17 +192,17 @@ void VescDriver::timerCallback()
   if (driver_mode_ == MODE_INITIALIZING) {
     // request version number, return packet will update the internal version numbers
     vesc_.requestFWVersion();
-    if (fw_version_major_ >= 0 && fw_version_minor_ >= 0) {
+    if (fw_version_major_.load() >= 0 && fw_version_minor_.load() >= 0) {
       RCLCPP_INFO(
         get_logger(), "Connected to VESC with firmware version %d.%d",
-        fw_version_major_, fw_version_minor_);
+        fw_version_major_.load(), fw_version_minor_.load());
       driver_mode_ = MODE_OPERATING;
     }
   } else if (driver_mode_ == MODE_OPERATING) {
     // poll for vesc state (telemetry)
     vesc_.requestState();
-    // poll for vesc imu
-    vesc_.requestImuData();
+    // // poll for vesc imu
+    // vesc_.requestImuData();
   } else {
     // unknown mode, how did that happen?
     assert(false && "unknown driver mode");
@@ -223,12 +265,13 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     imu_msg.header.frame_id = imu_frame_;
     std_imu_msg.header.frame_id = imu_frame_;
 
-    imu_msg.header.stamp = now();
-    std_imu_msg.header.stamp = now();
+    auto stamp = now();
+    imu_msg.header.stamp = stamp;
+    std_imu_msg.header.stamp = stamp;
 
-    imu_msg.imu.ypr.x = imuData->roll();
+    imu_msg.imu.ypr.x = imuData->yaw();
     imu_msg.imu.ypr.y = imuData->pitch();
-    imu_msg.imu.ypr.z = imuData->yaw();
+    imu_msg.imu.ypr.z = imuData->roll();
 
     imu_msg.imu.linear_acceleration.x = imuData->acc_x();
     imu_msg.imu.linear_acceleration.y = imuData->acc_y();
@@ -251,25 +294,20 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     std_imu_msg.linear_acceleration.y = imuData->acc_y() * 9.80665;
     std_imu_msg.linear_acceleration.z = imuData->acc_z() * 9.80665;
 
-    std_imu_msg.angular_velocity.x = imuData->gyr_x() * 0.0174533;
-    std_imu_msg.angular_velocity.y = imuData->gyr_y() * 0.0174533;
-    std_imu_msg.angular_velocity.z = imuData->gyr_z() * 0.0174533;
+    std_imu_msg.angular_velocity.x = imuData->gyr_x() * (M_PI / 180.0);
+    std_imu_msg.angular_velocity.y = imuData->gyr_y() * (M_PI / 180.0);
+    std_imu_msg.angular_velocity.z = imuData->gyr_z() * (M_PI / 180.0);
 
     std_imu_msg.orientation.w = imuData->q_w();
     std_imu_msg.orientation.x = imuData->q_x();
     std_imu_msg.orientation.y = imuData->q_y();
     std_imu_msg.orientation.z = imuData->q_z();
 
-    // covariances. Todo: set as a parameter or estimate
-    std_imu_msg.orientation_covariance[0] = 0.001;
-    std_imu_msg.orientation_covariance[4] = 0.001;
-    std_imu_msg.orientation_covariance[8] = 0.001;
-    std_imu_msg.angular_velocity_covariance[0] = 0.005;
-    std_imu_msg.angular_velocity_covariance[4] = 0.005;
-    std_imu_msg.angular_velocity_covariance[8] = 0.005;
-    std_imu_msg.linear_acceleration_covariance[0] = 0.005;
-    std_imu_msg.linear_acceleration_covariance[4] = 0.005;
-    std_imu_msg.linear_acceleration_covariance[8] = 0.005;
+    for (size_t i = 0; i < 9; ++i) {
+      std_imu_msg.orientation_covariance[i] = imu_orientation_cov_[i];
+      std_imu_msg.angular_velocity_covariance[i] = imu_angular_velocity_cov_[i];
+      std_imu_msg.linear_acceleration_covariance[i] = imu_linear_accel_cov_[i];
+    }
 
 
     imu_pub_->publish(imu_msg);
@@ -287,7 +325,7 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
 
 void VescDriver::vescErrorCallback(const std::string & error)
 {
-  RCLCPP_ERROR(get_logger(), "%s", error.c_str());
+  RCLCPP_WARN(get_logger(), "%s", error.c_str());
 }
 
 /**
@@ -377,44 +415,45 @@ VescDriver::CommandLimit::CommandLimit(
   name(str)
 {
   // check if user's minimum value is outside of the range min_lower to max_upper
-  auto param_min =
-    node_ptr->declare_parameter(name + "_min", rclcpp::ParameterValue(0.0));
+  // NAN default means "not provided by the user"
+  double param_min_val =
+    node_ptr->declare_parameter<double>(name + "_min", std::numeric_limits<double>::quiet_NaN());
 
-  if (param_min.get_type() != rclcpp::ParameterType::PARAMETER_NOT_SET) {
-    if (min_lower && param_min.get<double>() < *min_lower) {
+  if (!std::isnan(param_min_val)) {
+    if (min_lower && param_min_val < *min_lower) {
       lower = *min_lower;
       RCLCPP_WARN_STREAM(
-        logger, "Parameter " << name << "_min (" << param_min.get<double>() <<
+        logger, "Parameter " << name << "_min (" << param_min_val <<
           ") is less than the feasible minimum (" << *min_lower << ").");
-    } else if (max_upper && param_min.get<double>() > *max_upper) {
+    } else if (max_upper && param_min_val > *max_upper) {
       lower = *max_upper;
       RCLCPP_WARN_STREAM(
-        logger, "Parameter " << name << "_min (" << param_min.get<double>() <<
+        logger, "Parameter " << name << "_min (" << param_min_val <<
           ") is greater than the feasible maximum (" << *max_upper << ").");
     } else {
-      lower = param_min.get<double>();
+      lower = param_min_val;
     }
   } else if (min_lower) {
     lower = *min_lower;
   }
 
-  // check if the uers' maximum value is outside of the range min_lower to max_upper
-  auto param_max =
-    node_ptr->declare_parameter(name + "_max", rclcpp::ParameterValue(0.0));
+  // check if the users' maximum value is outside of the range min_lower to max_upper
+  double param_max_val =
+    node_ptr->declare_parameter<double>(name + "_max", std::numeric_limits<double>::quiet_NaN());
 
-  if (param_max.get_type() != rclcpp::ParameterType::PARAMETER_NOT_SET) {
-    if (min_lower && param_max.get<double>() < *min_lower) {
+  if (!std::isnan(param_max_val)) {
+    if (min_lower && param_max_val < *min_lower) {
       upper = *min_lower;
       RCLCPP_WARN_STREAM(
-        logger, "Parameter " << name << "_max (" << param_max.get<double>() <<
+        logger, "Parameter " << name << "_max (" << param_max_val <<
           ") is less than the feasible minimum (" << *min_lower << ").");
-    } else if (max_upper && param_max.get<double>() > *max_upper) {
+    } else if (max_upper && param_max_val > *max_upper) {
       upper = *max_upper;
       RCLCPP_WARN_STREAM(
-        logger, "Parameter " << name << "_max (" << param_max.get<double>() <<
+        logger, "Parameter " << name << "_max (" << param_max_val <<
           ") is greater than the feasible maximum (" << *max_upper << ").");
     } else {
-      upper = param_max.get<double>();
+      upper = param_max_val;
     }
   } else if (max_upper) {
     upper = *max_upper;
