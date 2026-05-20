@@ -77,6 +77,11 @@ private:
   double ff_gain_min_;
   double ff_gain_max_;
 
+  // acceleration feedforward (4G)
+  bool use_accel_ff_;
+  double accel_to_erpm_gain_;
+  bool use_cmd_accel_rate_limit_;
+
   // input saturation / rate limiting (4F); 0 = disabled
   double max_speed_;
   double max_steering_angle_;

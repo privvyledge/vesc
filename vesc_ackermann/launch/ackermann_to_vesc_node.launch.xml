@@ -22,5 +22,8 @@
     <param name="max_steering_angle" value="0.0" />
     <param name="max_accel" value="0.0" />
     <param name="max_steering_rate" value="0.0" />
+    <param name="use_accel_ff" value="false" />
+    <param name="accel_to_erpm_gain" value="0.0" />
+    <param name="use_cmd_accel_rate_limit" value="false" />
   </node>
 </launch>

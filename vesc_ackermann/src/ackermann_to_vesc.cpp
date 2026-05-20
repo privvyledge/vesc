@@ -93,6 +93,11 @@ AckermannToVesc::AckermannToVesc(const rclcpp::NodeOptions & options)
   ff_gain_min_ = declare_parameter("adaptive_ff_gain_min", speed_to_erpm_gain_ * 0.5);
   ff_gain_max_ = declare_parameter("adaptive_ff_gain_max", speed_to_erpm_gain_ * 2.0);
 
+  // acceleration feedforward (4G)
+  use_accel_ff_ = declare_parameter("use_accel_ff", false);
+  accel_to_erpm_gain_ = declare_parameter("accel_to_erpm_gain", 0.0);
+  use_cmd_accel_rate_limit_ = declare_parameter("use_cmd_accel_rate_limit", false);
+
   // input saturation / rate limiting (4F); 0 = disabled
   max_speed_ = declare_parameter("max_speed", 0.0);
   max_steering_angle_ = declare_parameter("max_steering_angle", 0.0);
@@ -157,10 +162,14 @@ void AckermannToVesc::ackermannCmdCallback(const AckermannDriveStamped::SharedPt
     steering = std::clamp(steering, -max_steering_angle_, max_steering_angle_);
   }
 
-  // rate limiting (4F)
+  // rate limiting (4F) + per-command accel budget fallback (4G)
   if (cmd_initialized_ && dt > 0.0 && dt < 1.0) {
-    if (max_accel_ > 0.0) {
-      double max_delta = max_accel_ * dt;
+    double effective_max_accel = max_accel_;
+    if (effective_max_accel <= 0.0 && use_cmd_accel_rate_limit_ && cmd_accel_ != 0.0) {
+      effective_max_accel = std::fabs(cmd_accel_);
+    }
+    if (effective_max_accel > 0.0) {
+      double max_delta = effective_max_accel * dt;
       speed = std::clamp(speed, prev_cmd_speed_ - max_delta, prev_cmd_speed_ + max_delta);
     }
     if (max_steering_rate_ > 0.0) {
@@ -181,6 +190,11 @@ void AckermannToVesc::ackermannCmdCallback(const AckermannDriveStamped::SharedPt
     integral_ += error * dt;
     integral_ = std::clamp(integral_, -anti_windup_, anti_windup_);
     erpm += kp_ * error + ki_ * integral_;
+  }
+
+  // acceleration feedforward (4G)
+  if (use_accel_ff_ && cmd_accel_ != 0.0) {
+    erpm += accel_to_erpm_gain_ * cmd_accel_;
   }
 
   Float64 erpm_msg;
