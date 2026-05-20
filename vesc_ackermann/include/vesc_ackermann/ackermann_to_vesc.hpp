@@ -77,6 +77,15 @@ private:
   double ff_gain_min_;
   double ff_gain_max_;
 
+  // input saturation / rate limiting (4F); 0 = disabled
+  double max_speed_;
+  double max_steering_angle_;
+  double max_accel_;
+  double max_steering_rate_;
+  double prev_cmd_speed_;
+  double prev_cmd_steering_;
+  bool cmd_initialized_;
+
   // ROS services
   rclcpp::Publisher<Float64>::SharedPtr erpm_pub_;
   rclcpp::Publisher<Float64>::SharedPtr servo_pub_;

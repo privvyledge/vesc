@@ -18,5 +18,9 @@
     <param name="adaptive_ff_alpha" value="0.95" />
     <param name="adaptive_ff_gain_min" value="2307.0" />
     <param name="adaptive_ff_gain_max" value="9228.0" />
+    <param name="max_speed" value="0.0" />
+    <param name="max_steering_angle" value="0.0" />
+    <param name="max_accel" value="0.0" />
+    <param name="max_steering_rate" value="0.0" />
   </node>
 </launch>

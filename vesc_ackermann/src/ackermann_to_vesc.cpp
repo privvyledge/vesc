@@ -63,7 +63,14 @@ AckermannToVesc::AckermannToVesc(const rclcpp::NodeOptions & options)
   use_adaptive_ff_(false),
   adaptive_ff_alpha_(0.95),
   ff_gain_min_(0.0),
-  ff_gain_max_(0.0)
+  ff_gain_max_(0.0),
+  max_speed_(0.0),
+  max_steering_angle_(0.0),
+  max_accel_(0.0),
+  max_steering_rate_(0.0),
+  prev_cmd_speed_(0.0),
+  prev_cmd_steering_(0.0),
+  cmd_initialized_(false)
 {
   // get conversion parameters
   speed_to_erpm_gain_ = declare_parameter<double>("speed_to_erpm_gain");
@@ -85,6 +92,12 @@ AckermannToVesc::AckermannToVesc(const rclcpp::NodeOptions & options)
   ff_gain_ = speed_to_erpm_gain_;
   ff_gain_min_ = declare_parameter("adaptive_ff_gain_min", speed_to_erpm_gain_ * 0.5);
   ff_gain_max_ = declare_parameter("adaptive_ff_gain_max", speed_to_erpm_gain_ * 2.0);
+
+  // input saturation / rate limiting (4F); 0 = disabled
+  max_speed_ = declare_parameter("max_speed", 0.0);
+  max_steering_angle_ = declare_parameter("max_steering_angle", 0.0);
+  max_accel_ = declare_parameter("max_accel", 0.0);
+  max_steering_rate_ = declare_parameter("max_steering_rate", 0.0);
 
   rclcpp::QoS qos_profile(rclcpp::KeepLast(1));
   qos_profile.reliability(rclcpp::ReliabilityPolicy::Reliable);
@@ -128,21 +141,46 @@ void AckermannToVesc::ackermannCmdCallback(const AckermannDriveStamped::SharedPt
       cmd_accel_, cmd_steering_rate_, cmd_jerk_);
   }
 
+  double speed = cmd->drive.speed;
+  double steering = cmd->drive.steering_angle;
+
+  // compute dt once — shared by rate limiting (4F) and PI (4E)
+  auto now = get_clock()->now();
+  double dt = (now - prev_cmd_time_).seconds();
+  prev_cmd_time_ = now;
+
+  // input saturation: clamp in Ackermann units before conversion (4F)
+  if (max_speed_ > 0.0) {
+    speed = std::clamp(speed, -max_speed_, max_speed_);
+  }
+  if (max_steering_angle_ > 0.0) {
+    steering = std::clamp(steering, -max_steering_angle_, max_steering_angle_);
+  }
+
+  // rate limiting (4F)
+  if (cmd_initialized_ && dt > 0.0 && dt < 1.0) {
+    if (max_accel_ > 0.0) {
+      double max_delta = max_accel_ * dt;
+      speed = std::clamp(speed, prev_cmd_speed_ - max_delta, prev_cmd_speed_ + max_delta);
+    }
+    if (max_steering_rate_ > 0.0) {
+      double max_delta = max_steering_rate_ * dt;
+      steering = std::clamp(steering, prev_cmd_steering_ - max_delta, prev_cmd_steering_ + max_delta);
+    }
+  }
+  prev_cmd_speed_ = speed;
+  prev_cmd_steering_ = steering;
+  cmd_initialized_ = true;
+
   // calc vesc electric RPM (speed)
-  double erpm = (use_adaptive_ff_ ? ff_gain_ : speed_to_erpm_gain_) *
-    cmd->drive.speed + speed_to_erpm_offset_;
+  double erpm = (use_adaptive_ff_ ? ff_gain_ : speed_to_erpm_gain_) * speed + speed_to_erpm_offset_;
 
   // PI closed-loop correction (4E)
-  if (use_closed_loop_) {
-    auto now = get_clock()->now();
-    double dt = (now - prev_cmd_time_).seconds();
-    prev_cmd_time_ = now;
-    if (dt > 0.0 && dt < 1.0) {
-      double error = erpm - actual_erpm_;
-      integral_ += error * dt;
-      integral_ = std::clamp(integral_, -anti_windup_, anti_windup_);
-      erpm += kp_ * error + ki_ * integral_;
-    }
+  if (use_closed_loop_ && dt > 0.0 && dt < 1.0) {
+    double error = erpm - actual_erpm_;
+    integral_ += error * dt;
+    integral_ = std::clamp(integral_, -anti_windup_, anti_windup_);
+    erpm += kp_ * error + ki_ * integral_;
   }
 
   Float64 erpm_msg;
@@ -150,7 +188,7 @@ void AckermannToVesc::ackermannCmdCallback(const AckermannDriveStamped::SharedPt
 
   // calc steering angle (servo)
   Float64 servo_msg;
-  servo_msg.data = steering_to_servo_gain_ * cmd->drive.steering_angle + steering_to_servo_offset_;
+  servo_msg.data = steering_to_servo_gain_ * steering + steering_to_servo_offset_;
 
   // publish
   if (rclcpp::ok()) {
