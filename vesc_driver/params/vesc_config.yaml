@@ -17,3 +17,4 @@
     imu_orientation_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.005]
     imu_angular_velocity_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]
     imu_linear_accel_covariance: [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+    imu_magnetic_field_covariance: [1.0e-9, 0.0, 0.0, 0.0, 1.0e-9, 0.0, 0.0, 0.0, 1.0e-9]

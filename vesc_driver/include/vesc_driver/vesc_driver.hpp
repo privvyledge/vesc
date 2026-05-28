@@ -38,6 +38,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/magnetic_field.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <vesc_msgs/msg/vesc_state.hpp>
 #include <vesc_msgs/msg/vesc_state_stamped.hpp>
@@ -55,6 +56,7 @@ using vesc_msgs::msg::VescState;
 using vesc_msgs::msg::VescStateStamped;
 using vesc_msgs::msg::VescImuStamped;
 using sensor_msgs::msg::Imu;
+using sensor_msgs::msg::MagneticField;
 
 class VescDriver
   : public rclcpp::Node
@@ -99,6 +101,7 @@ private:
   rclcpp::Publisher<VescStateStamped>::SharedPtr state_pub_;
   rclcpp::Publisher<VescImuStamped>::SharedPtr imu_pub_;
   rclcpp::Publisher<Imu>::SharedPtr imu_std_pub_;
+  rclcpp::Publisher<MagneticField>::SharedPtr imu_mag_pub_;
 
   rclcpp::Publisher<Float64>::SharedPtr servo_sensor_pub_;
   rclcpp::SubscriptionBase::SharedPtr duty_cycle_sub_;
@@ -127,6 +130,7 @@ private:
   std::array<double, 9> imu_orientation_cov_;
   std::array<double, 9> imu_angular_velocity_cov_;
   std::array<double, 9> imu_linear_accel_cov_;
+  std::array<double, 9> imu_magnetic_field_cov_;
 
   // miscellaneous variables and parameters
   double poll_rate_;

@@ -49,6 +49,7 @@ using std::placeholders::_1;
 using std_msgs::msg::Float64;
 using vesc_msgs::msg::VescStateStamped;
 using sensor_msgs::msg::Imu;
+using sensor_msgs::msg::MagneticField;
 
 VescDriver::VescDriver(const rclcpp::NodeOptions & options)
 : rclcpp::Node("vesc_driver", options),
@@ -86,6 +87,7 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   state_pub_ = create_publisher<VescStateStamped>("sensors/core", sensor_qos);
   imu_pub_ = create_publisher<VescImuStamped>("sensors/imu", sensor_qos);
   imu_std_pub_ = create_publisher<Imu>("sensors/imu/raw", sensor_qos);
+  imu_mag_pub_ = create_publisher<MagneticField>("sensors/imu/mag", sensor_qos);
 
   // since vesc state does not include the servo position, publish the commanded
   // servo position as a "sensor"
@@ -131,10 +133,15 @@ VescDriver::VescDriver(const rclcpp::NodeOptions & options)
   auto accel_cov = declare_parameter<std::vector<double>>(
     "imu_linear_accel_covariance",
     {0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01});
+  // ~31 µT noise per axis — conservative for a MEMS mag near motor/ESC noise
+  auto mag_cov = declare_parameter<std::vector<double>>(
+    "imu_magnetic_field_covariance",
+    {1e-9, 0.0, 0.0, 0.0, 1e-9, 0.0, 0.0, 0.0, 1e-9});
   for (size_t i = 0; i < 9; ++i) {
     imu_orientation_cov_[i] = ori_cov[i];
     imu_angular_velocity_cov_[i] = gyro_cov[i];
     imu_linear_accel_cov_[i] = accel_cov[i];
+    imu_magnetic_field_cov_[i] = mag_cov[i];
   }
 
   // Connect after all publishers and timers are ready — the background read thread
@@ -310,8 +317,20 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     }
 
 
+    // sensor_msgs/MagneticField: VESC sends magnetometer in µT; convert to Tesla
+    auto mag_msg = MagneticField();
+    mag_msg.header.frame_id = imu_frame_;
+    mag_msg.header.stamp = stamp;
+    mag_msg.magnetic_field.x = imuData->mag_x() * 1e-6;
+    mag_msg.magnetic_field.y = imuData->mag_y() * 1e-6;
+    mag_msg.magnetic_field.z = imuData->mag_z() * 1e-6;
+    for (size_t i = 0; i < 9; ++i) {
+      mag_msg.magnetic_field_covariance[i] = imu_magnetic_field_cov_[i];
+    }
+
     imu_pub_->publish(imu_msg);
     imu_std_pub_->publish(std_imu_msg);
+    imu_mag_pub_->publish(mag_msg);
   }
   auto & clk = *this->get_clock();
   RCLCPP_DEBUG_THROTTLE(
