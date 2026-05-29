@@ -269,6 +269,7 @@ public:
   double mag_x() const;
   double mag_y() const;
   double mag_z() const;
+  bool   has_mag() const;
 
   double q_w() const;
   double q_x() const;
@@ -291,9 +292,9 @@ private:
   double gyr_y_;
   double gyr_z_;
 
-  double mag_x_;
-  double mag_y_;
-  double mag_z_;
+  double mag_x_ = 0.0;
+  double mag_y_ = 0.0;
+  double mag_z_ = 0.0;
 
   double q0_;
   double q1_;

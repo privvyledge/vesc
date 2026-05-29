@@ -652,6 +652,11 @@ double VescPacketImu::mag_z() const
   return mag_z_;
 }
 
+bool VescPacketImu::has_mag() const
+{
+  return (mask_ & 0x0E00u) == 0x0E00u;
+}
+
 double VescPacketImu::q_w() const
 {
   return q0_;

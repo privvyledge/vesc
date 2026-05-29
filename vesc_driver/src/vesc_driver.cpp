@@ -317,20 +317,22 @@ void VescDriver::vescPacketCallback(const std::shared_ptr<VescPacket const> & pa
     }
 
 
-    // sensor_msgs/MagneticField: VESC sends magnetometer in µT; convert to Tesla
-    auto mag_msg = MagneticField();
-    mag_msg.header.frame_id = imu_frame_;
-    mag_msg.header.stamp = stamp;
-    mag_msg.magnetic_field.x = imuData->mag_x() * 1e-6;
-    mag_msg.magnetic_field.y = imuData->mag_y() * 1e-6;
-    mag_msg.magnetic_field.z = imuData->mag_z() * 1e-6;
-    for (size_t i = 0; i < 9; ++i) {
-      mag_msg.magnetic_field_covariance[i] = imu_magnetic_field_cov_[i];
-    }
-
     imu_pub_->publish(imu_msg);
     imu_std_pub_->publish(std_imu_msg);
-    imu_mag_pub_->publish(mag_msg);
+
+    // Only publish magnetometer if the VESC reports mag data in its response mask
+    if (imuData->has_mag()) {
+      auto mag_msg = MagneticField();
+      mag_msg.header.frame_id = imu_frame_;
+      mag_msg.header.stamp = stamp;
+      mag_msg.magnetic_field.x = imuData->mag_x() * 1e-6;
+      mag_msg.magnetic_field.y = imuData->mag_y() * 1e-6;
+      mag_msg.magnetic_field.z = imuData->mag_z() * 1e-6;
+      for (size_t i = 0; i < 9; ++i) {
+        mag_msg.magnetic_field_covariance[i] = imu_magnetic_field_cov_[i];
+      }
+      imu_mag_pub_->publish(mag_msg);
+    }
   }
   auto & clk = *this->get_clock();
   RCLCPP_DEBUG_THROTTLE(
